@@ -1,0 +1,7 @@
+; 默认不写 verbose，减少公网扫描刷日志；排错时可临时 logger add channel
+[general]
+dateformat=%F %T
+
+[logfiles]
+console => notice,warning,error
+messages.log => notice,warning,error,security

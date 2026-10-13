@@ -1,0 +1,14 @@
+; AMI 只给同机 phonebox 用（发短信、读写黑白名单），只监听本机回环。
+[general]
+enabled = yes
+webenabled = no
+port = {{AMI_PORT}}
+bindaddr = 127.0.0.1
+displayconnects = no
+
+[phonebox]
+secret = {{AMI_SECRET}}
+deny = 0.0.0.0/0.0.0.0
+permit = 127.0.0.1/255.255.255.255
+read = command
+write = command

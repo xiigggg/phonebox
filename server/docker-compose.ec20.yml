@@ -1,0 +1,9 @@
+# 接了 4G 模块时叠加本文件：在 .env 里设
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.ec20.yml
+# 设备路径与 .env 的 QUECTEL_AUDIO / QUECTEL_DATA 一致（EC20 通常 ttyUSB1=音频、ttyUSB2=AT）。
+# 模块重新枚举后 ttyUSB 编号可能变，建议用 udev 规则固定成 /dev/quectel-audio 之类的名字。
+services:
+  asterisk:
+    devices:
+      - ${QUECTEL_AUDIO:-/dev/ttyUSB1}:${QUECTEL_AUDIO:-/dev/ttyUSB1}
+      - ${QUECTEL_DATA:-/dev/ttyUSB2}:${QUECTEL_DATA:-/dev/ttyUSB2}

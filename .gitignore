@@ -1,0 +1,27 @@
+# 构建产物与本机配置
+build/
+.gradle/
+.kotlin/
+.cxx/
+local.properties
+.idea/
+*.iml
+captures/
+.toolchain-env
+
+# 安装包与签名材料，绝不提交
+*.apk
+*.aab
+*.p12
+*.jks
+*.keystore
+signing.properties
+
+# 服务端本机生成的配置、口令、证书和数据
+server/.env
+server/secrets/
+server/data/
+__pycache__/
+*.pyc
+
+.DS_Store

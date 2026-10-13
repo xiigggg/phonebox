@@ -1,0 +1,58 @@
+电话信箱（phonebox）
+本项目整体以 GNU General Public License v3.0 发布，见 LICENSE。
+
+以下第三方项目被本项目使用、移植或参考。各自的版权归原作者所有。
+
+------------------------------------------------------------------------
+PixelTelo — https://github.com/Pixel-Tailor-CN/PixelTelo
+许可：Apache License 2.0
+借用内容：
+  - server/phonebox 的来电识别逻辑参照了 PixelTelo：离线号码库 mast.db 的表结构与标签格式、
+    判定顺序（通讯录 > 白名单 > 黑名单 > 离线库 > 联网查询）。
+  - 本地库未收录时调用 PixelTelo 的在线查询接口；server/scripts/update-data.sh 从其同步接口
+    下载号码库。号码库数据本身不随本仓库分发，部署时由脚本下载。
+  未拷贝 PixelTelo 的源代码。
+
+------------------------------------------------------------------------
+PixelText — https://github.com/Pixel-Tailor-CN/PixelText
+许可：Apache License 2.0
+借用内容：
+  - android/app/src/main/assets/pixeltext/rules.json：原样拷贝自上游提交
+    885d4495dd2c5dc35624f81d6d0feb746b7b02f1（文件内 "version": 3），同目录附上游 LICENSE 与说明 NOTICE。
+  - App 的 MessageParser（data/parse/）由 PixelText 的 MessageParser 移植为 Kotlin，并有改动
+    （正文长度上限、异常容错、本地补充规则 rules-local.json）；源码文件头注明了出处。
+  - 短信通知按钮（复制验证码等）和短信卡片（验证码、取件码、动账、车票）的样式参照 PixelText。
+  - server/phonebox 使用 PixelText 发布的垃圾短信模型（TFLite）和 rules.json 做本地打分与分类；
+    模型不随本仓库分发，部署时由 server/scripts/update-data.sh 下载。
+
+------------------------------------------------------------------------
+Shizuku — https://github.com/RikkaApps/Shizuku
+许可：Apache License 2.0
+以库的形式依赖 dev.rikka.shizuku:api / provider，用于以 shell 身份执行固定的保活设置命令。
+
+------------------------------------------------------------------------
+liblinphone / Linphone SDK — https://gitlab.linphone.org/BC/public/liblinphone
+许可：GNU General Public License v3.0（Belledonne Communications 另提供商业许可）
+以库的形式依赖 org.linphone:linphone-sdk-android，作为 App 的 SIP / RTP / SRTP 协议栈。
+因为链接了 GPLv3 的 liblinphone，本项目整体采用 GPL-3.0。
+
+------------------------------------------------------------------------
+Asterisk — https://www.asterisk.org/
+许可：GNU General Public License v2.0
+服务端容器使用 Ubuntu 24.04 软件源中的 Asterisk 20 包，未修改其源码；
+本仓库只包含其配置模板和拨号计划。
+
+------------------------------------------------------------------------
+asterisk-chan-quectel — https://github.com/IchthysMaranatha/asterisk-chan-quectel
+许可：GNU General Public License v2.0（见上游 LICENSE.txt；它是 chan_dongle 的分支）
+server/asterisk/Dockerfile 在构建镜像时从上游固定提交
+3d45c7f072131296a7e3c1a4faf5bb18751dbd87 克隆并编译，本仓库不包含其源码。
+
+------------------------------------------------------------------------
+Android Jetpack（AndroidX、Jetpack Compose、Material 3）— Apache License 2.0
+OkHttp / okhttp-sse（Square）— Apache License 2.0
+kotlinx.serialization、Kotlin 标准库（JetBrains）— Apache License 2.0
+以库的形式依赖，未修改。
+
+------------------------------------------------------------------------
+Caddy（可选反代示例，server/caddy）— Apache License 2.0，使用官方镜像。

@@ -1,0 +1,29 @@
+; chan_quectel 配置，由 scripts/init.sh 按 .env 渲染。
+; 没接 4G 模块时 quectel show devices 会显示设备不可用，这不影响 SIP 和 phonebox。
+[general]
+interval=15
+
+[defaults]
+context=quectel-incoming
+exten=s
+group=0
+rxgain=0
+txgain=0
+autodeletesms=yes
+resetdongle=yes
+u2diag=-1
+callingpres=allowed_passed_screen
+disablesms=no
+language=zh_CN
+smsaspdu=yes
+mindtmfgap=45
+mindtmfduration=80
+mindtmfinterval=200
+callwaiting=auto
+disable=no
+initstate=start
+dtmf=relax
+
+[quectel0]
+audio={{QUECTEL_AUDIO}}
+data={{QUECTEL_DATA}}

@@ -1,0 +1,8 @@
+; 未接来电转语音信箱，录音在 ${DATA_DIR}/asterisk/spool/voicemail 下
+[general]
+format=wav49|wav
+maxmsg=200
+maxsecs=180
+
+[default]
+{{APP_EXT}} => {{VM_PIN}},phonebox

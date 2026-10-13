@@ -1,0 +1,31 @@
+; 自动加载，但关掉用不上又会刷错误日志的模块
+[modules]
+autoload=yes
+noload => chan_sip.so
+noload => res_hep.so
+noload => res_hep_pjsip.so
+noload => res_hep_rtcp.so
+noload => cdr_pgsql.so
+noload => cel_pgsql.so
+noload => res_config_pgsql.so
+noload => cdr_radius.so
+noload => cel_radius.so
+noload => res_config_ldap.so
+noload => chan_unistim.so
+noload => chan_skinny.so
+noload => chan_mgcp.so
+noload => chan_iax2.so
+noload => res_pjsip_phoneprov_provider.so
+noload => res_phoneprov.so
+noload => chan_dahdi.so
+noload => chan_ooh323.so
+noload => res_xmpp.so
+noload => chan_motif.so
+noload => res_pjsip_transport_websocket.so
+noload => res_http_websocket.so
+; Ubuntu 包同时带了 IMAP/ODBC 版语音信箱，和普通版一起加载会重复注册
+noload => app_voicemail_imap.so
+noload => app_voicemail_odbc.so
+; 包自带的 geolocation.conf 样例解析报错，用不上
+noload => res_pjsip_geolocation.so
+noload => res_geolocation.so

@@ -1,0 +1,6 @@
+# 本机生成的配置、口令、证书和数据，绝不提交
+.env
+secrets/
+data/
+__pycache__/
+*.pyc

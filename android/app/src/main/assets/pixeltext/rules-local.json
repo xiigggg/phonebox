@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "local_bank_generic_balance",
+      "target_card": "BankTransaction",
+      "priority": 10,
+      "fast_fail": {
+        "keywords": [
+          "尾号"
+        ]
+      },
+      "conditions": {
+        "content_regex": "尾号(?<account>\\d{4})的?(?:储蓄卡|信用卡|借记卡|账户|卡)?.*?(?<type>支出|消费|支付|转出|扣款|收入|入账|存入|转入|退款)(?:人民币|RMB)?\\s*(?<amount>[0-9,]+(?:\\.\\d+)?)元?(?:.*?余额(?:为)?(?:人民币)?\\s*(?<balance>[0-9,]+(?:\\.\\d+)?))?"
+      }
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+# 电话信箱服务端：Asterisk（含 chan_quectel）+ phonebox；Caddy 反代可选（--profile caddy）。
+# 先运行 scripts/init.sh 生成口令、证书和配置，再 docker compose up -d。
+# 4G 模块的串口映射在 docker-compose.ec20.yml，接好模块后在 .env 里用 COMPOSE_FILE 启用。
+services:
+  asterisk:
+    build:
+      context: ./asterisk
+      args:
+        APT_MIRROR: ${APT_MIRROR:-}
+    image: phonebox-asterisk:local
+    restart: unless-stopped
+    # 挂载都带 z：SELinux 主机（Fedora/RHEL）上需要重新打标签，其他系统会忽略
+    # SIP 的 NAT 处理和 RTP 端口段用 host 网络最省事；监听地址由 .env 的 SIP_BIND 控制
+    network_mode: host
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ./secrets/asterisk-etc:/etc/asterisk-local:ro,z
+      - ./secrets/tls:/etc/asterisk/keys:ro,z
+      - ${DATA_DIR:-./data}/records:/var/log/asterisk/phonebox:z
+      - ${DATA_DIR:-./data}/asterisk/log:/var/log/asterisk:z
+      - ${DATA_DIR:-./data}/asterisk/spool:/var/spool/asterisk:z
+      - ${DATA_DIR:-./data}/asterisk/db:/var/lib/asterisk/db:z
+
+  phonebox:
+    build: ./phonebox
+    image: phonebox-web:local
+    restart: unless-stopped
+    # 和 Asterisk 同在 host 网络：AMI 只听 127.0.0.1，Asterisk 也从本机访问 /api/lookup
+    network_mode: host
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      PHONEBOX_BIND: ${PHONEBOX_BIND:-127.0.0.1}
+      PHONEBOX_PORT: ${PHONEBOX_PORT:-18989}
+      PHONEBOX_ORIGIN: ${PHONEBOX_ORIGIN:-https://sms.example.com}
+      PHONEBOX_AMI_HOST: 127.0.0.1
+      PHONEBOX_AMI_PORT: ${AMI_PORT:-5038}
+      PHONEBOX_LOOKUP_IPS: 127.0.0.1,${PHONEBOX_BIND:-127.0.0.1}
+      # 联网查号地址；.env 里设 off 关闭（不把来电号码发给第三方）
+      PHONEBOX_TELO_URL: ${PHONEBOX_TELO_URL:-https://pixeltelo.api.mystery0.vip/api/v2/query}
+    volumes:
+      - ${DATA_DIR:-./data}/records:/data:ro,z
+      - ${DATA_DIR:-./data}/phonebox/state:/state:z
+      - ./secrets/passcode:/state/passcode:ro,z
+      - ./secrets/ami-secret:/run/ami-secret:ro,z
+      - ${DATA_DIR:-./data}/mast:/mast:ro,z
+      - ${DATA_DIR:-./data}/model:/model:ro,z
+
+  caddy:
+    image: caddy:2
+    profiles: ["caddy"]
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro,z
+      - ${DATA_DIR:-./data}/caddy:/data:z
+      - ${DATA_DIR:-./data}/app-update:/srv/phonebox-update:ro,z

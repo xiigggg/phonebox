@@ -1,0 +1,6 @@
+rules.json 来自 PixelText（https://github.com/Pixel-Tailor-CN/PixelText，Apache-2.0，见同目录 LICENSE），
+原样拷贝自上游提交 885d4495dd2c5dc35624f81d6d0feb746b7b02f1（2026-10-03），文件内 "version": 3。
+与 server/phonebox/test/model/rules.json 为同一份。
+
+rules-local.json 是本项目自己补的规则（格式与 rules.json 相同），优先级低于上游规则：
+上游的动账规则只认招行/中行的固定格式，且不取余额，这里补一条通用的"尾号/金额/余额"规则。

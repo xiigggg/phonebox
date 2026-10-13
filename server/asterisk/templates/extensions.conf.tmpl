@@ -1,0 +1,116 @@
+; 由 scripts/init.sh 按 .env 渲染，不要直接改渲染结果；要改就改模板或 .env。
+[globals]
+PHONES={{PHONES}}
+PB_APP_EXT={{APP_EXT}}                       ; App 用的分机，离线时才走唤醒
+PB_LOOKUP_URL={{PHONEBOX_URL}}/api/lookup    ; phonebox 号码识别
+PB_WAKE_METHOD={{WAKE_METHOD}}               ; quectel=经 4G 模块发短信；stub=只写日志（测试用）
+PB_WAKE_DEVICE=quectel0
+PB_WAKE_INTERVAL={{WAKE_INTERVAL}}           ; 唤醒短信最短间隔（秒）
+PB_WAKE_WAIT={{WAKE_WAIT}}                   ; 发出唤醒后最多等 App 上线多少秒
+
+; ---------- 来电与短信入口（chan_quectel） ----------
+[quectel-incoming]
+; 短信：只把数字来源和 Base64 字符串传给 shell；正文由脚本本地解码。
+exten => sms,1,Set(IS_SMS=1)
+ same => n,Set(SMS_FROM=${FILTER(0-9+,${CALLERID(num)})})
+ same => n,Set(SMS_B64=${FILTER(A-Za-z0-9+/=,${SMS_BASE64})})
+ same => n,System(/etc/asterisk/scripts/sms-notify.sh '${SMS_FROM}' '${SMS_B64}')
+ same => n,Hangup()
+
+; 语音来电：名单（astdb，phonebox 挂了也生效）→ phonebox 号码识别 → 拦截或振铃
+exten => s,1,NoOp(Incoming call raw num=${CALLERID(num)} name=${CALLERID(name)})
+ same => n,Set(NUM=${FILTER(0-9+,${CALLERID(num)})})
+ ; phonebox 写名单时号码可能带或不带 +86，两种都查
+ same => n,Set(NUM_LOCAL=${NUM})
+ same => n,ExecIf($["${NUM:0:3}"="+86"]?Set(NUM_LOCAL=${NUM:3}))
+ same => n,ExecIf($["${NUM:0:4}"="0086"]?Set(NUM_LOCAL=${NUM:4}))
+ same => n,GotoIf($[${LEN(${NUM})}=0]?lookup)
+ same => n,GotoIf($[${DB_EXISTS(whitelist/${NUM})} | ${DB_EXISTS(whitelist/${NUM_LOCAL})}]?white)
+ same => n,GotoIf($[${DB_EXISTS(blacklist/${NUM})} | ${DB_EXISTS(blacklist/${NUM_LOCAL})}]?black)
+ same => n(lookup),Set(RESP=${CURL(${PB_LOOKUP_URL}?fmt=txt&n=${URIENCODE(${NUM})})})
+ same => n,Set(ACT=${CUT(RESP,|,1)})
+ same => n,Set(CALL_TAG=${CUT(RESP,|,2)})
+ same => n,Set(KIND=${CUT(RESP,|,3)})
+ same => n,GotoIf($["${ACT}"="BLOCK"]?blocked)
+ ; 来电显示：号码 + 性质（号码库标签优先，其次号码类型）
+ same => n,Set(LABEL=${IF($[${LEN(${CALL_TAG})}>0]?${CALL_TAG}:${IF($[${LEN(${KIND})}>0]?${KIND}:未标记)})})
+ same => n,Set(CALLERID(name)=${NUM} ${LABEL})
+ same => n,Set(CONNECTEDLINE(name)=${CALLERID(name)})
+ same => n(ring),Gosub(pb-wake,s,1)
+ same => n,Dial(${PHONES},30)
+ same => n,GotoIf($["${DIALSTATUS}"="NOANSWER"]?voicemail)
+ same => n,Hangup()
+ same => n(voicemail),Voicemail(${PB_APP_EXT},u)
+ same => n,Hangup()
+ same => n(white),NoOp(WHITELIST ${NUM})
+ same => n,Set(LABEL=白名单)
+ same => n,Set(CALLERID(name)=${NUM} ${LABEL})
+ same => n,Set(CONNECTEDLINE(name)=${CALLERID(name)})
+ same => n,Goto(ring)
+ same => n(black),Set(CALL_TAG=黑名单)
+ same => n,NoOp(BLOCKED blacklist ${NUM})
+ same => n,Hangup(21)
+ same => n(blocked),NoOp(BLOCKED spam call ${NUM} tag=${CALL_TAG})
+ same => n,Hangup(21)
+
+exten => h,1,GotoIf($["${IS_SMS}"="1"]?done)  ; 短信不记成未接来电
+ same => n,System(/etc/asterisk/scripts/call-log.sh 'in' '${FILTER(0-9+,${CALLERID(num)})}' '${CDR(disposition)}' '${CDR(billsec)}' '${BASE64_ENCODE(${IF($[${LEN(${LABEL})}>0]?${LABEL}:${CALL_TAG})})}')
+ same => n(done),Hangup()
+
+exten => ussd,1,Hangup()
+
+; ---------- App 掉线时短信唤醒 ----------
+; App 在线：直接返回。离线且配置了唤醒号码：限频发一条唤醒短信，给主叫回铃，最多等 PB_WAKE_WAIT 秒。
+; 限频期内不再等待：说明上次唤醒没叫醒，不值得每通电话都让其他分机晚响。
+[pb-wake]
+exten => s,1,GotoIf($[${LEN(${PJSIP_DIAL_CONTACTS(${PB_APP_EXT})})}>0]?done)
+ same => n,Set(WN=${FILTER(0-9+,${DB(phonebox/wake_number)})})
+ same => n,GotoIf($[${LEN(${WN})}=0]?done)
+ same => n,Set(NOW=${EPOCH})
+ same => n,Set(LAST=${FILTER(0-9,${DB(phonebox/wake_last)})})
+ same => n,GotoIf($[${LEN(${LAST})}>0]?:send)
+ same => n,GotoIf($[${NOW}-${LAST} < ${PB_WAKE_INTERVAL}]?limited)
+ same => n(send),Set(DB(phonebox/wake_last)=${NOW})
+ same => n,System(/etc/asterisk/scripts/wake-sms.sh '${FILTER(a-z,${PB_WAKE_METHOD})}' '${FILTER(a-z0-9,${PB_WAKE_DEVICE})}' '${WN}')
+ same => n,Ringing()
+ same => n,Set(PBW_I=0)
+ same => n(poll),Wait(1)
+ same => n,GotoIf($[${LEN(${PJSIP_DIAL_CONTACTS(${PB_APP_EXT})})}>0]?online)
+ same => n,Set(PBW_I=$[${PBW_I}+1])
+ same => n,GotoIf($[${PBW_I}<${PB_WAKE_WAIT}]?poll)
+ same => n,NoOp(PBWAKE timeout after ${PBW_I}s)
+ same => n,Return()
+ same => n(limited),NoOp(PBWAKE rate limited, last=${LAST})
+ same => n(done),Return()
+ same => n(online),NoOp(PBWAKE ${PB_APP_EXT} online after ${PBW_I}s)
+ same => n,Return()
+
+; ---------- 分机外呼（经 4G 模块） ----------
+[from-internal]
+; 分机互拨（精确匹配优先于下面的外呼模式）
+exten => {{APP_EXT}},1,Dial(PJSIP/${EXTEN},20)
+ same => n,Hangup()
+{{#EXT2}}
+exten => {{EXT2}},1,Dial(PJSIP/${EXTEN},20)
+ same => n,Hangup()
+{{/EXT2}}
+{{#TEST_ECHO}}
+; 回声测试：仅 .env 里 TEST_ECHO=yes 时存在，部署验证完建议关掉
+exten => {{TEST_ECHO_EXT}},1,Answer()
+ same => n,Playback(beep)
+ same => n,Echo()
+ same => n,Hangup()
+{{/TEST_ECHO}}
+
+exten => _1XXXXXXXXXX,1,Set(CALLERID(all)=${CALLERID(num)})
+ same => n,Dial(Quectel/quectel0/${EXTEN},60)
+ same => n,Hangup()
+
+exten => _0XXXXXXXXX.,1,Dial(Quectel/quectel0/${EXTEN},60)
+ same => n,Hangup()
+
+exten => _[1-9]XX!,1,Dial(Quectel/quectel0/${EXTEN},60)
+ same => n,Hangup()
+
+exten => h,1,System(/etc/asterisk/scripts/call-log.sh 'out' '${FILTER(0-9+,${CDR(dst)})}' '${CDR(disposition)}' '${CDR(billsec)}')
+ same => n,Hangup()

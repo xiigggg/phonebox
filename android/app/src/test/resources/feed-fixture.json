@@ -1,0 +1,24 @@
+{"sms": [
+ {"ts": 1760000300, "from": "10690000001", "body": "【测试银行】您的验证码是 123456，5分钟内有效。", "cat": "验证码", "level": "urgent",
+  "kind": "验证码", "card": "验证码", "code": "123456", "code_label": "验证码", "summary": "", "sig": "测试银行", "future_field": 1},
+ {"ts": 1760000200, "from": "10690000002", "body": "【测试银行】您尾号0000的卡支出 ¥10.00。", "cat": "金融", "level": "normal",
+  "kind": "金融", "card": "银行动账", "code": null, "code_label": "", "summary": "支出 ¥10.00", "sig": "测试银行"},
+ {"ts": 1760000100, "from": "13800000001", "body": "晚上一起吃饭吗", "cat": "其他", "level": "normal",
+  "kind": "个人", "card": "", "code": null, "code_label": "", "summary": "", "sig": ""},
+ {"ts": 1760000050, "from": "10690000003", "body": "【某快递】取件码 8888，请到驿站取件。", "cat": "快递", "level": "normal",
+  "kind": "快递", "card": "快递", "code": "8888", "code_label": "取件码", "summary": "某快递", "sig": "某快递"},
+ {"ts": 1760000000, "from": "10690000004", "body": "【某商城】大促销，回T退订", "cat": "骚扰", "level": "none",
+  "kind": "骚扰", "card": "", "code": null, "code_label": "", "summary": "", "sig": "某商城"},
+ {"ts": 1759999000, "from": "13800000001"}
+],
+"calls": [
+ {"ts": 1760000400, "number": "13800000010", "dir": "in", "disposition": "NO ANSWER", "billsec": 0,
+  "tag": "诈骗电话", "ntype": "手机", "block": true, "loc": "", "src": "离线库"},
+ {"ts": 1760000300, "number": "13800000011", "dir": "in", "disposition": "ANSWERED", "billsec": 42,
+  "tag": "", "ntype": "手机", "block": false, "loc": "", "src": ""},
+ {"ts": 1760000200, "number": "13800000012", "dir": "in", "disposition": "NO ANSWER", "billsec": 0,
+  "tag": "快递外卖", "ntype": "手机", "block": false, "loc": "", "src": "记录"},
+ {"ts": 1760000100, "number": "13800000013", "dir": "out", "disposition": "ANSWERED", "billsec": 5,
+  "tag": "", "ntype": "手机", "block": false, "loc": "", "src": ""}
+],
+"versions": {"rules": "r1", "mast": "m1", "model": ""}}
