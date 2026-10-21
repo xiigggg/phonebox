@@ -28,8 +28,13 @@ class GuardianTargetService : Service() {
         runCatching { startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) }
         val reason = intent?.getStringExtra(GuardianPolicy.EXTRA_REASON)?.take(40) ?: "未注明"
         GuardianController.get(this).recordLaunch(reason)
-        appGraph.diagLog.log(DiagType.Guardian, "Guardian 拉起服务（$reason）")
-        KeepAliveService.ensureRunning(this, "Guardian")
+        if (appGraph.keepAlive != null) {
+            // 同进程里服务明明在：是判活误报，别借机重连（重连会清零退避）
+            appGraph.diagLog.log(DiagType.Guardian, "Guardian 误报服务不在（$reason），服务在运行，忽略")
+        } else {
+            appGraph.diagLog.log(DiagType.Guardian, "Guardian 拉起服务（$reason）")
+            KeepAliveService.ensureRunning(this, "Guardian")
+        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf(startId)
         return START_NOT_STICKY

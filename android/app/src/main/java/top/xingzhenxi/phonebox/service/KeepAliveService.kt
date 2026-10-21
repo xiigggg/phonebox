@@ -285,7 +285,16 @@ class KeepAliveService : Service(), KeepAliveControl {
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "phonebox:heartbeat")
             .apply { acquire(10_000) }
         graph.heartbeat.beat()
-        if (configured) sip.refreshRegistration()
+        when {
+            !configured -> Unit
+            regState is RegState.Ok -> sip.refreshRegistration()
+            // 没注册上又没有排着的重试：说明重试链断了（账号已清掉时 refreshRegistration 什么也不做），重新来一遍
+            retryPending == null -> {
+                diag.log(DiagType.Registration, "心跳自检：未注册且无待重试，重新注册")
+                backoff.reset()
+                applyAccountNow("心跳自检")
+            }
+        }
         scheduleHeartbeatAlarm()
         val f = feed
         graph.scope.launch {

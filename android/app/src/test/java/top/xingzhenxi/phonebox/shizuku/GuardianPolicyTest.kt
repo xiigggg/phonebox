@@ -23,6 +23,12 @@ class GuardianPolicyTest {
         assertFalse(GuardianPolicy.isServiceRunning("* ServiceRecord{1 u0 com.other/.service.KeepAliveService}", pkg))
     }
 
+    @Test fun truncatedDumpIsNotEvidence() {
+        assertFalse(GuardianPolicy.isCompleteDump(""))
+        assertFalse(GuardianPolicy.isCompleteDump("  User 0 active services:"))
+        assertTrue(GuardianPolicy.isCompleteDump("ACTIVITY MANAGER SERVICES (dumpsys activity services)\n  (nothing)"))
+    }
+
     @Test fun launchArgv() {
         assertEquals(
             listOf("am", "start-foreground-service", "-n", "$pkg/.shizuku.GuardianTargetService", "--es", "reason", "x"),

@@ -19,11 +19,17 @@ data class SipAccountConfig(
         "SipAccountConfig(host=$host, port=$port, transport=$transport, username=$username, pinned=${certSha256 != null}, srtp=$srtp)"
 }
 
+private val failSeq = java.util.concurrent.atomic.AtomicLong()
+
 sealed interface RegState {
     data object None : RegState
     data object Progress : RegState
     data object Ok : RegState
-    data class Failed(val reason: String) : RegState
+    /**
+     * seq 让两次原因相同的失败也是不同的值：registration 是 StateFlow，相等的值会被合并掉，
+     * 而服务端的重试只由新的 Failed 触发——合并一次，重试就再也排不上（真机上曾因此离线数小时）。
+     */
+    data class Failed(val reason: String, val seq: Long = failSeq.incrementAndGet()) : RegState
     data object Cleared : RegState
 }
 

@@ -31,8 +31,8 @@ android {
         minSdk = 31
         targetSdk = 36
         // 发布/测试应用内更新时用 -PpbVersionCode=N 出一个更高版本的包
-        versionCode = (project.findProperty("pbVersionCode") as String?)?.toInt() ?: 3
-        versionName = "0.2.1"
+        versionCode = (project.findProperty("pbVersionCode") as String?)?.toInt() ?: 4
+        versionName = "0.2.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

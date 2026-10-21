@@ -44,14 +44,26 @@ class GuardianService : IGuardianService.Stub() {
     private fun loop() {
         while (running) {
             lastCheckAt = System.currentTimeMillis()
-            val out = ExecResult.parse(ShellService.run(GuardianPolicy.dumpsysArgv(PKG)))
-            if (out.ok && !GuardianPolicy.isServiceRunning(out.output, PKG)) {
+            if (missingTwice()) {
                 val r = ExecResult.parse(ShellService.run(GuardianPolicy.launchArgv(PKG, "服务不在")))
                 lastLaunchAt = System.currentTimeMillis()
                 lastReason = if (r.ok) "服务不在，已拉起" else "服务不在，拉起失败(${r.code})"
             }
             try { Thread.sleep(GuardianPolicy.INTERVAL_MS) } catch (_: InterruptedException) { return }
         }
+    }
+
+    /**
+     * 连续两次（间隔 10 秒）完整的 dumpsys 都看不到服务才算不在。ColorOS 上 dumpsys 偶尔返回残缺输出，
+     * 曾在一天里误判 239 次，每次都把 App 的退避清零、形成重连风暴。
+     */
+    private fun missingTwice(): Boolean {
+        repeat(2) { i ->
+            val out = ExecResult.parse(ShellService.run(GuardianPolicy.dumpsysArgv(PKG)))
+            if (!out.ok || !GuardianPolicy.isCompleteDump(out.output) || GuardianPolicy.isServiceRunning(out.output, PKG)) return false
+            if (i == 0) try { Thread.sleep(10_000) } catch (_: InterruptedException) { return false }
+        }
+        return true
     }
 
     private companion object { const val PKG = BuildConfig.APPLICATION_ID }
@@ -67,6 +79,9 @@ object GuardianPolicy {
 
     fun launchArgv(pkg: String, reason: String) =
         listOf("am", "start-foreground-service", "-n", "$pkg/$TARGET", "--es", EXTRA_REASON, reason)
+
+    /** dumpsys 被打断或超时时输出不完整，不能据此判定服务不在 */
+    fun isCompleteDump(dumpsys: String): Boolean = dumpsys.contains("ACTIVITY MANAGER SERVICES")
 
     /** 服务在时输出含 ServiceRecord{…pkg/.service.KeepAliveService}；不在时只有 (nothing) */
     fun isServiceRunning(dumpsys: String, pkg: String): Boolean =
