@@ -92,6 +92,9 @@ fun HealthScreen(onBack: () -> Unit) {
             }
         }
         item {
+            top.xingzhenxi.phonebox.push.PushSection(ctx) { t, c -> Section(t, c) }
+        }
+        item {
             top.xingzhenxi.phonebox.root.RootSection(ctx, results, onFixed = { recheck() }) { t, c -> Section(t, c) }
         }
         item {

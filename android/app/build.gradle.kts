@@ -125,6 +125,7 @@ dependencies {
     implementation(libs.shizuku.provider)
 
     implementation(libs.linphone.sdk)
+    implementation(libs.unifiedpush.connector)
 
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver3)

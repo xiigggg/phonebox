@@ -1,16 +1,13 @@
-"""推送唤醒：App 的 SSE 实时连接断了时，经 UnifiedPush 或厂商通道把它叫醒。
+"""推送唤醒：App 的 SSE 实时连接断了时，经 UnifiedPush（如自建 ntfy）把它叫醒。
 
 原则：
 - 推送只是“唤醒信号 + 不含正文的提示”，App 收到后自己经 /api/feed 拉正文；
 - 只推给没在 SSE 上收到这条事件的设备（由 server.py 判断），SSE 活着就不经第三方；
-- 经厂商服务器的内容由 PUSH_CONTENT 决定：wake（只有“有新短信”）/ preview（默认，加上发件方与类别）/
-  full（连正文一起，验证码会经过厂商服务器）。
+- 经推送服务器的内容由 PUSH_CONTENT 决定：wake（只有“有新短信”）/ preview（默认，加上发件方与类别）/
+  full（连正文一起，验证码会经过推送服务器）。
 
 配置全走环境变量，没配的通道自动跳过：
   PUSH_CONTENT=wake|preview|full
-  HMS_APP_ID / HMS_APP_SECRET              华为 Push Kit（个人开发者可用，不需上架）
-  HMS_CATEGORY                             可选：已申请的消息自分类（如 IM），不填按普通消息
-  MEIZU_APP_ID / MEIZU_APP_SECRET          魅族 Flyme 推送
   UnifiedPush 不需要配置：设备上报的 endpoint 就是发送地址（自建 ntfy 等）。
 """
 import base64
@@ -28,7 +25,7 @@ CONTENT = os.environ.get('PUSH_CONTENT', 'preview')
 if CONTENT not in ('wake', 'preview', 'full'):
     CONTENT = 'preview'
 HTTP_TIMEOUT = 8
-PROVIDERS = ('unifiedpush', 'hms', 'meizu')
+PROVIDERS = ('unifiedpush',)
 # 每台设备最多这么多条推送注册（重装、换通道会留下旧的）
 MAX_PER_DEVICE = 3
 
@@ -172,21 +169,6 @@ def _http(url, data=None, headers=None, method='POST', timeout=HTTP_TIMEOUT):
         return e.code, e.read()
 
 
-class _TokenCache:
-    """厂商 access token 缓存：提前 5 分钟过期"""
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.value, self.expires = None, 0
-
-    def get(self, fetch):
-        with self.lock:
-            if self.value and time.time() < self.expires - 300:
-                return self.value
-            self.value, ttl = fetch()
-            self.expires = time.time() + ttl
-            return self.value
-
-
 def webpush_encrypt(plaintext, pub_b64, auth_b64, salt=None, server_key=None):
     """RFC 8291（aes128gcm）。依赖 cryptography；没装时抛 PushError，调用方退回发空消息。"""
     try:
@@ -224,76 +206,8 @@ def send_unifiedpush(entry, title, body, data, urgent):
         raise PushError('HTTP %d' % st)
 
 
-_hms_token = _TokenCache()
-
-
-def _hms_access_token():
-    app_id, secret = os.environ['HMS_APP_ID'], os.environ['HMS_APP_SECRET']
-    form = urllib.parse.urlencode({'grant_type': 'client_credentials', 'client_id': app_id, 'client_secret': secret}).encode()
-    st, resp = _http('https://oauth-login.cloud.huawei.com/oauth2/v3/token', form,
-                     {'Content-Type': 'application/x-www-form-urlencoded'})
-    j = json.loads(resp or b'{}')
-    if st != 200 or 'access_token' not in j:
-        raise PushError('华为鉴权失败 HTTP %d' % st)
-    return j['access_token'], int(j.get('expires_in', 3600))
-
-
-def hms_body(token, title, body, data, urgent):
-    """华为 Push Kit v1 消息体：短信走通知栏消息（App 被杀也由系统显示），来电只发高优先级透传"""
-    android = {'urgency': 'HIGH' if urgent else 'NORMAL', 'ttl': '600s'}
-    # 消息自分类（IM、VOIP 等）要先在华为后台申请权益；没申请就别填，否则请求被拒
-    if os.environ.get('HMS_CATEGORY'):
-        android['category'] = os.environ['HMS_CATEGORY']
-    msg = {'token': [token], 'data': json.dumps(data, separators=(',', ':')), 'android': android}
-    if data.get('t') != 'call':
-        android['notification'] = {'title': title, 'body': body, 'click_action': {'type': 3}, 'importance': 'NORMAL'}
-        msg['notification'] = {'title': title, 'body': body}
-    return {'validate_only': False, 'message': msg}
-
-
-def send_hms(entry, title, body, data, urgent):
-    at = _hms_token.get(_hms_access_token)
-    url = 'https://push-api.cloud.huawei.com/v1/%s/messages:send' % urllib.parse.quote(os.environ['HMS_APP_ID'])
-    st, resp = _http(url, json.dumps(hms_body(entry['token'], title, body, data, urgent)).encode(),
-                     {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + at})
-    j = json.loads(resp or b'{}')
-    code = str(j.get('code', ''))
-    if code == '80300007':   # 全部 token 无效
-        raise PushError('token 无效', permanent=True)
-    if st != 200 or code != '80000000':
-        raise PushError('华为 HTTP %d code %s' % (st, code or '-'))
-
-
-def meizu_sign(params, secret):
-    """魅族服务端签名：参数按键排序拼成 k=v（无分隔），末尾加 appSecret，取 MD5 小写"""
-    s = ''.join('%s=%s' % (k, params[k]) for k in sorted(params)) + secret
-    return hashlib.md5(s.encode()).hexdigest()
-
-
-def meizu_params(token, title, body, data, app_id, secret):
-    message = {
-        'noticeBarInfo': {'noticeBarType': 0, 'title': title, 'content': body},
-        'clickTypeInfo': {'clickType': 0},
-        'pushTimeInfo': {'offLine': 1, 'validTime': 1},
-        'advanceInfo': {'notificationType': {'vibrate': 1, 'lights': 1, 'sound': 1}},
-    }
-    params = {'appId': app_id, 'pushIds': token, 'messageJson': json.dumps(message, ensure_ascii=False, separators=(',', ':'))}
-    params['sign'] = meizu_sign(params, secret)
-    return params
-
-
-def send_meizu(entry, title, body, data, urgent):
-    app_id, secret = os.environ['MEIZU_APP_ID'], os.environ['MEIZU_APP_SECRET']
-    form = urllib.parse.urlencode(meizu_params(entry['token'], title, body, data, app_id, secret)).encode()
-    st, resp = _http('https://server-api-push.meizu.com/garcia/api/server/push/varnished/pushByPushId', form,
-                     {'Content-Type': 'application/x-www-form-urlencoded'})
-    j = json.loads(resp or b'{}')
-    if st != 200 or str(j.get('code')) != '200':
-        raise PushError('魅族 HTTP %d code %s' % (st, j.get('code', '-')))
-
-
-SENDERS = {'unifiedpush': send_unifiedpush, 'hms': send_hms, 'meizu': send_meizu}
-REQUIRED_ENV = {'unifiedpush': (), 'hms': ('HMS_APP_ID', 'HMS_APP_SECRET'), 'meizu': ('MEIZU_APP_ID', 'MEIZU_APP_SECRET')}
+SENDERS = {'unifiedpush': send_unifiedpush}
+REQUIRED_ENV = {'unifiedpush': ()}
 
 
 def configured(provider):

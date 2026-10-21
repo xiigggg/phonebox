@@ -39,11 +39,12 @@ class TMessage(unittest.TestCase):
 
 class TValidate(unittest.TestCase):
     def test_entries(self):
-        ok, err = push.validate_entry({'provider': 'hms', 'token': 'A' * 40})
+        up = 'https://ntfy.example.com/up' + 'A' * 20
+        ok, err = push.validate_entry({'provider': 'unifiedpush', 'token': up})
         self.assertIsNone(err)
-        self.assertEqual(ok, {'provider': 'hms', 'token': 'A' * 40})
-        for bad in ({'provider': 'xx', 'token': 'A' * 40}, {'provider': 'hms', 'token': 'short'},
-                    {'provider': 'hms', 'token': 'A' * 20 + '\nB'}, {'provider': 'hms', 'token': 7}, []):
+        self.assertEqual(ok, {'provider': 'unifiedpush', 'token': up})
+        for bad in ({'provider': 'hms', 'token': up}, {'provider': 'unifiedpush', 'token': 'short'},
+                    {'provider': 'unifiedpush', 'token': up + '\nB'}, {'provider': 'unifiedpush', 'token': 7}, []):
             self.assertIsNotNone(push.validate_entry(bad)[1], bad)
 
     def test_unifiedpush_endpoint(self):
@@ -63,41 +64,21 @@ class TRegistry(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / 'push.json'
             r = push.Registry(p)
-            r.register('dev1', {'provider': 'hms', 'token': 't1' * 8})
-            r.register('dev1', {'provider': 'hms', 'token': 't2' * 8})   # 同通道覆盖
             r.register('dev1', {'provider': 'unifiedpush', 'token': 'https://x.example.com/1'})
-            r.register('dev2', {'provider': 'hms', 'token': 't3' * 8})
-            self.assertEqual([e['token'] for e in r.devices()['dev1']], ['t2' * 8, 'https://x.example.com/1'])
+            r.register('dev1', {'provider': 'unifiedpush', 'token': 'https://x.example.com/2'})   # 同通道覆盖
+            r.register('dev1', {'provider': 'other', 'token': 'https://x.example.com/3'})
+            r.register('dev2', {'provider': 'unifiedpush', 'token': 'https://x.example.com/4'})
+            self.assertEqual([e['token'] for e in r.devices()['dev1']], ['https://x.example.com/2', 'https://x.example.com/3'])
             self.assertEqual(oct(p.stat().st_mode & 0o777), '0o600')
-            r.drop_token('dev1', 't2' * 8)
+            r.drop_token('dev1', 'https://x.example.com/3')
             r.prune({'dev1'})
             r2 = push.Registry(p)
             self.assertEqual(list(r2.devices()), ['dev1'])
             self.assertEqual(r2.devices()['dev1'][0]['provider'], 'unifiedpush')
 
 
-class TVendorBodies(unittest.TestCase):
-    def test_hms_sms_is_notification_call_is_data_only(self):
-        b = push.hms_body('tok', '新短信', '来自 95588', {'t': 'sms'}, False)
-        m = b['message']
-        self.assertEqual(m['token'], ['tok'])
-        self.assertEqual(m['android']['notification']['title'], '新短信')
-        self.assertEqual(json.loads(m['data']), {'t': 'sms'})
-        c = push.hms_body('tok', 'x', 'y', {'t': 'call'}, True)['message']
-        self.assertNotIn('notification', c)
-        self.assertEqual(c['android']['urgency'], 'HIGH')
-
-    def test_meizu_sign(self):
-        p = {'appId': '100', 'pushIds': 'abc', 'messageJson': '{}'}
-        expect = hashlib.md5(b'appId=100messageJson={}pushIds=abcSECRET').hexdigest()
-        self.assertEqual(push.meizu_sign(p, 'SECRET'), expect)
-        params = push.meizu_params('abc', 't', 'b', {}, '100', 'SECRET')
-        self.assertEqual(params['sign'], push.meizu_sign({k: v for k, v in params.items() if k != 'sign'}, 'SECRET'))
-
-
 class TSend(unittest.TestCase):
-    def test_unconfigured_is_skipped(self):
-        os.environ.pop('HMS_APP_ID', None)
+    def test_unknown_provider_is_skipped(self):
         self.assertEqual(push.send({'provider': 'hms', 'token': 'x' * 10}, 'sms'), (False, False, '通道未配置'))
 
     def test_retry_then_permanent(self):

@@ -307,6 +307,24 @@ class PhoneboxClient(
         }
     }
 
+    /** 上报推送 token；返回服务端是否配置了这个通道 */
+    suspend fun registerPush(provider: String, token: String, pub: String?, auth: String?): AdminResult<Boolean> {
+        val payload = buildJsonObject {
+            put("provider", provider)
+            put("token", token)
+            if (pub != null && auth != null) { put("pub", pub); put("auth", auth) }
+        }.toString()
+        return admin(jsonPost("api/push/register", payload)) { body ->
+            FeedJson.json.parseToJsonElement(body).jsonObject["configured"]?.jsonPrimitive?.booleanOrNull ?: false
+        }
+    }
+
+    suspend fun unregisterPush(): AdminResult<Unit> = admin(Request.Builder().url(url("api/push/register")).delete()) { }
+
+    /** 让服务端立刻给本机发一条测试推送 */
+    suspend fun testPush(): AdminResult<Boolean> =
+        admin(jsonPost("api/push/test", "{}")) { body -> FeedJson.json.parseToJsonElement(body).jsonObject["ok"]?.jsonPrimitive?.booleanOrNull ?: false }
+
     // cookie 方式写接口要 Origin + X-Phonebox；令牌方式带上也无妨
     private fun jsonPost(path: String, json: String): Request.Builder = Request.Builder().url(url(path))
         .header("Origin", origin).header("X-Phonebox", "1")

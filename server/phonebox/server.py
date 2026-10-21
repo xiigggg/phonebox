@@ -10,7 +10,7 @@
 #   PHONEBOX_LOOKUP_IPS：免登录可调 /api/lookup、/api/sms-score 的来源（默认 127.0.0.1）
 #   PHONEBOX_SSE_PING：SSE 心跳秒数（默认 25，只为测试缩短）
 #   PHONEBOX_SENT_LOG：仅测试用钩子，设了就把每次 /api/send 的 to/text 追加到该文件
-#   PUSH_*、HMS_*、MEIZU_*：推送唤醒，见 push.py 文件头；PUSH_GRACE：新短信多少秒内没在 SSE 上送达才推（默认 3）
+#   PUSH_*：推送唤醒，见 push.py 文件头；PUSH_GRACE：新短信多少秒内没在 SSE 上送达才推（默认 3）
 import json, os, re, secrets, time, threading
 from collections import deque
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -135,7 +135,7 @@ def revoke_token(key):
             _save_json(TOKENS_FILE, TOKENS)
     PUSH_REG.unregister(key)
 
-# ---- 推送唤醒：SSE 没送达的设备才经 UnifiedPush / 厂商通道叫醒（逻辑见 push.py） ----
+# ---- 推送唤醒：SSE 没送达的设备才经 UnifiedPush 叫醒（逻辑见 push.py） ----
 import push as _push
 PUSH_REG = _push.Registry(STATE / 'push.json')
 with _tokens_lock:

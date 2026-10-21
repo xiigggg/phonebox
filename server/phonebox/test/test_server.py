@@ -341,7 +341,7 @@ class T5Push(unittest.TestCase):
         j = json.loads(b)
         self.assertEqual(j['content'], 'preview')
         self.assertEqual([r['provider'] for r in j['registered']], ['unifiedpush'])
-        self.assertEqual(j['providers'], {'unifiedpush': True, 'hms': False, 'meizu': False})
+        self.assertEqual(j['providers'], {'unifiedpush': True})
         self.assertEqual(req('DELETE', '/api/push/register', headers=bearer(tok))[0], 204)
         self.assertEqual(json.loads(req('GET', '/api/push/status', headers=bearer(tok))[2])['registered'], [])
 
