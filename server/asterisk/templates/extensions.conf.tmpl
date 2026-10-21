@@ -3,6 +3,7 @@
 PHONES={{PHONES}}
 PB_APP_EXT={{APP_EXT}}                       ; App 用的分机，离线时才走唤醒
 PB_LOOKUP_URL={{PHONEBOX_URL}}/api/lookup    ; phonebox 号码识别
+PB_PUSH_URL={{PHONEBOX_URL}}/api/push/wake   ; phonebox 推送唤醒（UnifiedPush / 厂商通道；没注册时 sent=0）
 PB_WAKE_METHOD={{WAKE_METHOD}}               ; quectel=经 4G 模块发短信；stub=只写日志（测试用）
 PB_WAKE_DEVICE=quectel0
 PB_WAKE_INTERVAL={{WAKE_INTERVAL}}           ; 唤醒短信最短间隔（秒）
@@ -59,20 +60,23 @@ exten => h,1,GotoIf($["${IS_SMS}"="1"]?done)  ; 短信不记成未接来电
 
 exten => ussd,1,Hangup()
 
-; ---------- App 掉线时短信唤醒 ----------
-; App 在线：直接返回。离线且配置了唤醒号码：限频发一条唤醒短信，给主叫回铃，最多等 PB_WAKE_WAIT 秒。
-; 限频期内不再等待：说明上次唤醒没叫醒，不值得每通电话都让其他分机晚响。
+; ---------- App 掉线时唤醒 ----------
+; App 在线：直接返回。离线时先经 phonebox 发推送唤醒（有注册才发），再按原逻辑限频发唤醒短信，
+; 任一路发出就给主叫回铃，最多等 PB_WAKE_WAIT 秒。
+; 短信限频期内、又没有推送可发时不再等待：说明上次唤醒没叫醒，不值得每通电话都让其他分机晚响。
 [pb-wake]
 exten => s,1,GotoIf($[${LEN(${PJSIP_DIAL_CONTACTS(${PB_APP_EXT})})}>0]?done)
+ same => n,Set(PUSHR=${CURL(${PB_PUSH_URL},wake=1)})
+ same => n,Set(PUSHED=${REGEX("sent[^0-9]*[1-9]" ${PUSHR})})
  same => n,Set(WN=${FILTER(0-9+,${DB(phonebox/wake_number)})})
- same => n,GotoIf($[${LEN(${WN})}=0]?done)
+ same => n,GotoIf($[${LEN(${WN})}=0]?nosms)
  same => n,Set(NOW=${EPOCH})
  same => n,Set(LAST=${FILTER(0-9,${DB(phonebox/wake_last)})})
  same => n,GotoIf($[${LEN(${LAST})}>0]?:send)
  same => n,GotoIf($[${NOW}-${LAST} < ${PB_WAKE_INTERVAL}]?limited)
  same => n(send),Set(DB(phonebox/wake_last)=${NOW})
  same => n,System(/etc/asterisk/scripts/wake-sms.sh '${FILTER(a-z,${PB_WAKE_METHOD})}' '${FILTER(a-z0-9,${PB_WAKE_DEVICE})}' '${WN}')
- same => n,Ringing()
+ same => n(wait),Ringing()
  same => n,Set(PBW_I=0)
  same => n(poll),Wait(1)
  same => n,GotoIf($[${LEN(${PJSIP_DIAL_CONTACTS(${PB_APP_EXT})})}>0]?online)
@@ -81,6 +85,7 @@ exten => s,1,GotoIf($[${LEN(${PJSIP_DIAL_CONTACTS(${PB_APP_EXT})})}>0]?done)
  same => n,NoOp(PBWAKE timeout after ${PBW_I}s)
  same => n,Return()
  same => n(limited),NoOp(PBWAKE rate limited, last=${LAST})
+ same => n(nosms),GotoIf($["${PUSHED}"="1"]?wait)
  same => n(done),Return()
  same => n(online),NoOp(PBWAKE ${PB_APP_EXT} online after ${PBW_I}s)
  same => n,Return()

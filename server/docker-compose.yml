@@ -38,6 +38,14 @@ services:
       PHONEBOX_LOOKUP_IPS: 127.0.0.1,${PHONEBOX_BIND:-127.0.0.1}
       # 联网查号地址；.env 里设 off 关闭（不把来电号码发给第三方）
       PHONEBOX_TELO_URL: ${PHONEBOX_TELO_URL:-https://pixeltelo.api.mystery0.vip/api/v2/query}
+      # 推送唤醒（可选，见 .env.example 与 docs/push.md）
+      PUSH_CONTENT: ${PUSH_CONTENT:-preview}
+      PUSH_UP_ALLOW_HTTP: ${PUSH_UP_ALLOW_HTTP:-0}
+      HMS_APP_ID: ${HMS_APP_ID:-}
+      HMS_APP_SECRET: ${HMS_APP_SECRET:-}
+      HMS_CATEGORY: ${HMS_CATEGORY:-}
+      MEIZU_APP_ID: ${MEIZU_APP_ID:-}
+      MEIZU_APP_SECRET: ${MEIZU_APP_SECRET:-}
     volumes:
       - ${DATA_DIR:-./data}/records:/data:ro,z
       - ${DATA_DIR:-./data}/phonebox/state:/state:z

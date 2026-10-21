@@ -54,6 +54,7 @@ def setUpModule():
        '-e', 'PHONEBOX_AMI_HOST=127.0.0.1', '-e', 'PHONEBOX_MAST=/mast.db', '-e', f'PHONEBOX_AMI_PORT={AMI_PORT}',
        '-e', f'PHONEBOX_ORIGIN={ORIGIN}', '-e', 'PHONEBOX_BIND=127.0.0.1', '-e', f'PHONEBOX_PORT={PORT}',
        '-e', 'PHONEBOX_TELO_URL=http://127.0.0.1:9/', '-e', 'PHONEBOX_SSE_PING=2',
+       '-e', 'PUSH_UP_ALLOW_HTTP=1', '-e', 'PUSH_GRACE=1',
        IMAGE, 'python3', '/app/server.py')
     for _ in range(40):
         try:
@@ -278,6 +279,127 @@ class T3Events(unittest.TestCase):
         self.assertIsNotNone(ok)
         for c in conns[1:] + [ok]:
             c.close()
+
+
+class FakeUP:
+    """假的 UnifiedPush 推送服务器（如 ntfy）：记录收到的 POST，可设定返回码"""
+    PORT = 38998
+
+    def __init__(self):
+        import http.server
+        rec = self.received = []
+        me = self
+        me.status = 201
+
+        class Hd(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                n = int(self.headers.get('Content-Length', '0') or 0)
+                rec.append({'path': self.path, 'headers': dict(self.headers), 'body': self.rfile.read(n), 't': time.time()})
+                self.send_response(me.status); self.end_headers()
+        self.srv = http.server.ThreadingHTTPServer(('127.0.0.1', self.PORT), Hd)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+
+    def url(self, name):
+        return f'http://127.0.0.1:{self.PORT}/{name}'
+
+    def wait(self, path, timeout):
+        end = time.time() + timeout
+        while time.time() < end:
+            hit = [r for r in self.received if r['path'] == path]
+            if hit:
+                return hit
+            time.sleep(0.05)
+        return []
+
+    def close(self):
+        self.srv.shutdown(); self.srv.server_close()
+
+
+class T5Push(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.up = FakeUP()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.up.close()
+
+    def register(self, tok, name):
+        return req('POST', '/api/push/register', {'provider': 'unifiedpush', 'token': self.up.url(name)}, bearer(tok))
+
+    def test_register_auth_and_validation(self):
+        self.assertEqual(req('POST', '/api/push/register', {'provider': 'unifiedpush', 'token': self.up.url('x')})[0], 401)
+        tok = get_token()
+        st, _, b = req('POST', '/api/push/register', {'provider': 'nope', 'token': 'x' * 20}, bearer(tok))
+        self.assertEqual((st, json.loads(b)['msg']), (400, 'invalid_provider'))
+        st, _, b = self.register(tok, 'v1')
+        self.assertEqual((st, json.loads(b)), (200, {'ok': True, 'configured': True}))
+        st, _, b = req('GET', '/api/push/status', headers=bearer(tok))
+        j = json.loads(b)
+        self.assertEqual(j['content'], 'preview')
+        self.assertEqual([r['provider'] for r in j['registered']], ['unifiedpush'])
+        self.assertEqual(j['providers'], {'unifiedpush': True, 'hms': False, 'meizu': False})
+        self.assertEqual(req('DELETE', '/api/push/register', headers=bearer(tok))[0], 204)
+        self.assertEqual(json.loads(req('GET', '/api/push/status', headers=bearer(tok))[2])['registered'], [])
+
+    def test_sms_pushed_only_when_sse_missed_it(self):
+        online, offline = get_token('online'), get_token('offline')
+        self.register(online, 'online')
+        self.register(offline, 'offline')
+        # 前面的测试刚关掉一批 SSE，服务端最多 1 秒后才释放槽位
+        for _ in range(10):
+            a = SSE(bearer(online))
+            if a.status == 200:
+                break
+            a.close()
+            time.sleep(0.5)
+        time.sleep(0.3)
+        now = int(time.time())
+        append('sms.jsonl', {'ts': now, 'from': '13800000091', 'body': '【测试】验证码 135790', 'cat': '', 'level': ''})
+        got = a.wait(lambda e: e.get('event') == 'sms' and '13800000091' in e.get('data', ''), 3)
+        self.assertIsNotNone(got, (a.status, [x.get('event') for x in a.events]))
+        hit = self.up.wait('/offline', 6)
+        self.assertEqual(len(hit), 1)
+        self.assertEqual(hit[0]['headers'].get('Urgency'), 'normal')
+        # 没带 WebPush 公钥时发明文 JSON 唤醒信号，正文不在里面
+        self.assertEqual(json.loads(hit[0]['body']), {'t': 'sms'})
+        self.assertNotIn(b'135790', hit[0]['body'])
+        time.sleep(1.5)
+        self.assertEqual(self.up.wait('/online', 0.2), [])   # SSE 已送达的设备不推
+        a.close()
+
+    def test_wake_local_only_and_gone_endpoint_dropped(self):
+        tok = get_token('wake')
+        self.register(tok, 'wake')
+        st, _, b = req('POST', '/api/push/wake', 'x=1', {'Content-Type': 'application/x-www-form-urlencoded'})
+        self.assertEqual(st, 200)
+        self.assertGreaterEqual(json.loads(b)['sent'], 1)
+        hit = self.up.wait('/wake', 3)
+        self.assertEqual(hit[0]['headers'].get('Urgency'), 'high')
+        self.assertEqual(json.loads(hit[0]['body']), {'t': 'call'})
+        # endpoint 返回 410：注册被删除
+        self.up.status = 410
+        try:
+            req('POST', '/api/push/wake', 'x=1', {'Content-Type': 'application/x-www-form-urlencoded'})
+        finally:
+            self.up.status = 201
+        self.assertEqual(json.loads(req('GET', '/api/push/status', headers=bearer(tok))[2])['registered'], [])
+
+    def test_test_push_rate_limited_and_revoke_clears(self):
+        tok = get_token('selftest')
+        self.register(tok, 'selftest')
+        st, _, b = req('POST', '/api/push/test', None, bearer(tok))
+        self.assertEqual((st, json.loads(b)['ok']), (200, True))
+        self.assertEqual(json.loads(self.up.wait('/selftest', 3)[0]['body']), {'t': 'test'})
+        self.assertEqual(req('POST', '/api/push/test', None, bearer(tok))[0], 429)
+        self.assertEqual(req('DELETE', '/api/token', headers=bearer(tok))[0], 204)
+        n = len(self.up.received)
+        req('POST', '/api/push/wake', 'x=1', {'Content-Type': 'application/x-www-form-urlencoded'})
+        time.sleep(0.5)
+        self.assertEqual([r for r in self.up.received[n:] if r['path'] == '/selftest'], [])
 
 
 INJECT = ['13800000001\r\nAction: Originate', '13800000001 1', '138000"00001', '13800000001;', '1380000000\n',

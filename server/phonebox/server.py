@@ -10,6 +10,7 @@
 #   PHONEBOX_LOOKUP_IPS：免登录可调 /api/lookup、/api/sms-score 的来源（默认 127.0.0.1）
 #   PHONEBOX_SSE_PING：SSE 心跳秒数（默认 25，只为测试缩短）
 #   PHONEBOX_SENT_LOG：仅测试用钩子，设了就把每次 /api/send 的 to/text 追加到该文件
+#   PUSH_*、HMS_*、MEIZU_*：推送唤醒，见 push.py 文件头；PUSH_GRACE：新短信多少秒内没在 SSE 上送达才推（默认 3）
 import json, os, re, secrets, time, threading
 from collections import deque
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -132,6 +133,50 @@ def revoke_token(key):
     with _tokens_lock:
         if TOKENS.pop(key, None) is not None:
             _save_json(TOKENS_FILE, TOKENS)
+    PUSH_REG.unregister(key)
+
+# ---- 推送唤醒：SSE 没送达的设备才经 UnifiedPush / 厂商通道叫醒（逻辑见 push.py） ----
+import push as _push
+PUSH_REG = _push.Registry(STATE / 'push.json')
+with _tokens_lock:
+    PUSH_REG.prune(set(TOKENS))
+PUSH_GRACE = float(os.environ.get('PUSH_GRACE', '3'))
+_sse_delivered = {}            # 设备令牌哈希 → 已经写进它 SSE 连接的最大事件键
+_sse_delivered_lock = threading.Lock()
+_push_test_at = {}
+_push_log = deque(maxlen=50)   # (时间, 通道, 种类, 结果)：只给 /api/push/status 看，不含号码和正文
+
+def _push_one(dev_key, entry, kind, item):
+    ok, permanent, info = _push.send(entry, kind, item)
+    if permanent:
+        PUSH_REG.drop_token(dev_key, entry['token'])
+    _push_log.append((int(time.time()), entry['provider'], kind, 'ok' if ok else info[:60]))
+    return ok
+
+def push_devices(kind, item=None, event_key=None, only=None):
+    """给已注册推送的设备发唤醒；event_key 给定时跳过 SSE 已送达该事件的设备。返回成功条数。"""
+    sent = 0
+    with _tokens_lock:
+        valid = set(TOKENS)
+    for dev_key, entries in PUSH_REG.devices().items():
+        if dev_key not in valid or (only is not None and dev_key != only):
+            continue
+        if event_key is not None:
+            with _sse_delivered_lock:
+                if _sse_delivered.get(dev_key, (0, 0)) >= event_key:
+                    continue
+        for e in entries:
+            if _push_one(dev_key, e, kind, item):
+                sent += 1
+                break   # 一台设备有一个通道送到就够了
+    return sent
+
+def _push_after_grace(event_key, name, item):
+    time.sleep(PUSH_GRACE)
+    try:
+        push_devices(name, item, event_key)
+    except Exception:
+        pass
 
 # /api/send 每个凭据每分钟上限：令牌泄露时把损失（真实短信费用、骚扰他人）限制住
 SEND_PER_MIN = 10
@@ -492,6 +537,8 @@ def publish(name, item):
         key = (ms, _ev_state['seq'])
         _ev_buf.append((key, f'{ms}-{key[1]}', name, data, time.time()))
         _ev_cond.notify_all()
+    if name == 'sms' and PUSH_REG.devices():
+        threading.Thread(target=_push_after_grace, args=(key, name, item), daemon=True).start()
 
 class _Tail:
     """跟踪一个只追加的 jsonl；被截断或换 inode 时从头重读，靠已见行的哈希去重，不会重复推旧记录。"""
@@ -680,6 +727,8 @@ class H(BaseHTTPRequestHandler):
         return False
 
     def serve_events(self):
+        cred = self.credential()
+        dev_key = cred[1] if cred and cred[0] == 'bearer' else None
         if not _sse_slots.acquire(blocking=False):
             self.send_response(503); self.send_header('Retry-After', '30'); self.end_headers(); return
         try:
@@ -715,6 +764,9 @@ class H(BaseHTTPRequestHandler):
                     next_ping = time.time() + SSE_PING
                 if out:
                     self.wfile.write(out); self.wfile.flush()
+                    if dev_key and pending:
+                        with _sse_delivered_lock:
+                            _sse_delivered[dev_key] = max(_sse_delivered.get(dev_key, (0, 0)), cursor)
         except (OSError, ValueError):
             pass   # 断开 / 写超时：释放槽位
         finally:
@@ -795,6 +847,15 @@ class H(BaseHTTPRequestHandler):
             self.wfile.write(body)
         elif path == '/api/events':
             self.serve_events()
+        elif path == '/api/push/status':
+            k = self.bearer()
+            if not k:
+                self.send_response(401); self.end_headers(); return
+            mine = [{'provider': e['provider'], 'updated': e.get('updated', 0), 'configured': _push.configured(e['provider'])}
+                    for e in PUSH_REG.devices().get(k, [])]
+            self.send_json({'content': _push.CONTENT, 'registered': mine,
+                            'providers': {p: _push.configured(p) for p in _push.PROVIDERS},
+                            'log': [list(x) for x in list(_push_log)[-10:]]})
         elif path == '/api/lists':
             try:
                 refresh_lists()
@@ -820,6 +881,12 @@ class H(BaseHTTPRequestHandler):
             self.send_response(404); self.end_headers()
 
     def do_DELETE(self):
+        if self.path == '/api/push/register':
+            k = self.bearer()
+            if not k:
+                self.send_response(401); self.end_headers(); return
+            PUSH_REG.unregister(k)
+            self.send_response(204); self.end_headers(); return
         if self.path == '/api/token':
             k = self.bearer()
             if not k:
@@ -854,6 +921,30 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == '/api/token':
             self.issue_device_token(); return
+        if self.path == '/api/push/wake':
+            # 只给本机 Asterisk 拨号计划用：App 分机离线时有来电
+            if self.client_address[0] not in LOOKUP_IPS:
+                self.send_response(401); self.end_headers(); return
+            self.send_json({'sent': push_devices('call')}); return
+        if self.path in ('/api/push/register', '/api/push/test'):
+            # 只认设备令牌：推送是 App 的事，网页 cookie 会话没有这个需求
+            k = self.bearer()
+            if not k:
+                self.send_response(401); self.end_headers(); return
+            if self.path == '/api/push/test':
+                now = time.time()
+                if now - _push_test_at.get(k, 0) < 30:
+                    self.send_json({'ok': False, 'msg': 'too_frequent'}, 429); return
+                _push_test_at[k] = now
+                self.send_json({'ok': push_devices('test', only=k) > 0}); return
+            body = self.read_json(4096)
+            if body is None:
+                return
+            entry, err = _push.validate_entry(body)
+            if err:
+                self.send_json({'ok': False, 'msg': err}, 400); return
+            PUSH_REG.register(k, entry)
+            self.send_json({'ok': True, 'configured': _push.configured(entry['provider'])}); return
         if self.path == '/api/lists':
             if self.write_ok() is None:
                 return
