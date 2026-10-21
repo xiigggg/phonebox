@@ -102,6 +102,18 @@ fun DiagScreen(onBack: () -> Unit) {
             }
         }
         item {
+            Section("短信首达延迟") {
+                val sum = remember(now) { graph.latency.summary() }
+                if (sum == null) Muted("还没有新短信。NAS 收到短信到本机弹出通知的时间差会记在这里（只记时间，不记内容）。")
+                else {
+                    Field("最近 ${sum.count} 条", "中位 ${dur(sum.p50Ms)} · 九成 ≤ ${dur(sum.p90Ms)} · 最慢 ${dur(sum.maxMs)}")
+                    Field("到达通道", sum.byVia.entries.joinToString(" · ") { "${it.key.label} ${it.value}" })
+                    graph.latency.recent().takeLast(5).reversed().forEach { Field(fmt(it.nasTs * 1000), "${dur(it.delayMs)} · ${it.via.label}") }
+                    Muted("“补拉”表示实时通道当时不通，是重连或心跳时才拉到的，延迟大多来自这里。")
+                }
+            }
+        }
+        item {
             Section("被杀记录（系统）") {
                 if (exits.isEmpty()) Muted("没有记录")
                 exits.forEach { Field(fmt(it.ts), it.reason) }
@@ -189,5 +201,12 @@ private val DiagType.label: String
         DiagType.Update -> "更新"
         DiagType.Contacts -> "通讯录"
     }
+
+private fun dur(ms: Long): String = when {
+    ms < 10_000 -> "%.1f 秒".format(ms / 1000.0)
+    ms < 120_000 -> "${ms / 1000} 秒"
+    ms < 7_200_000 -> "${ms / 60_000} 分钟"
+    else -> "%.1f 小时".format(ms / 3_600_000.0)
+}
 
 private fun fmt(ts: Long): String = SimpleDateFormat("MM-dd HH:mm:ss", Locale.CHINA).format(Date(ts))

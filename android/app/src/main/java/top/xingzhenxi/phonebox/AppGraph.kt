@@ -51,6 +51,7 @@ class AppGraph(context: Context, val configRepository: ConfigRepository) {
     val feedCache = FeedCache.inDir(app.filesDir)
     val heartbeat = HeartbeatStore(app)
     val uptime = UptimeStore(app)
+    val latency = top.xingzhenxi.phonebox.diag.LatencyStore(app)
     val readStore by lazy { ReadStore(app) }
     val callLogPrefs by lazy { top.xingzhenxi.phonebox.data.CallLogPrefs(app) }
     val smsNotifier by lazy { SmsNotifier(app).also { it.createChannels() } }
@@ -88,6 +89,7 @@ class AppGraph(context: Context, val configRepository: ConfigRepository) {
                 if (item is NewItem.Sms) {
                     val blocked = top.xingzhenxi.phonebox.data.SmsCategories.blockedNumbers(fs.state.value.feed.calls)
                     smsNotifier.post(item.item, readStore.spamMode, blocked)
+                    latency.record(item.item.ts, System.currentTimeMillis(), item.via)
                 }
             }
         }

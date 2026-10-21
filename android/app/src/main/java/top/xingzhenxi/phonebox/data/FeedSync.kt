@@ -42,7 +42,7 @@ data class FeedSnapshot(
 )
 
 sealed interface NewItem {
-    data class Sms(val item: SmsItem) : NewItem
+    data class Sms(val item: SmsItem, val via: top.xingzhenxi.phonebox.diag.ArrivalVia = top.xingzhenxi.phonebox.diag.ArrivalVia.Stream) : NewItem
     data class Call(val item: CallItem) : NewItem
 }
 
@@ -94,8 +94,12 @@ class FeedSync(
         _state.value = _state.value.copy(mode = SyncMode.Idle)
     }
 
+    /** 推送唤醒后的那次拉取标成 Push，便于诊断页区分；其余全量拉取都是 Poll */
+    @Volatile private var pullVia = top.xingzhenxi.phonebox.diag.ArrivalVia.Poll
+
     /** 全量拉一次；会话失效返回 false */
-    suspend fun pollNow(): Boolean = try {
+    suspend fun pollNow(via: top.xingzhenxi.phonebox.diag.ArrivalVia = top.xingzhenxi.phonebox.diag.ArrivalVia.Poll): Boolean = try {
+        pullVia = via
         val feed = source.fetchFeed()
         applyFull(feed)
         true
@@ -217,7 +221,7 @@ class FeedSync(
 
     /** 只把比上次已知最新还新（或同一秒）的未见条目当新消息，避免长时间离线后一次弹出几百条旧记录 */
     private fun newSince(feed: Feed, prevMax: Long): List<NewItem> =
-        feed.sms.filter { it.ts >= prevMax && smsKey(it) !in seen }.map { NewItem.Sms(it) } +
+        feed.sms.filter { it.ts >= prevMax && smsKey(it) !in seen }.map { NewItem.Sms(it, pullVia) } +
             feed.calls.filter { it.ts >= prevMax && callKey(it) !in seen }.map { NewItem.Call(it) }
 
     private fun maxTs(f: Feed): Long = maxOf(f.sms.maxOfOrNull { it.ts } ?: 0, f.calls.maxOfOrNull { it.ts } ?: 0)

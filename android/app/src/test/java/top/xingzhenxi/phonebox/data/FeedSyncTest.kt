@@ -1,5 +1,6 @@
 package top.xingzhenxi.phonebox.data
 
+import top.xingzhenxi.phonebox.diag.ArrivalVia
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -66,7 +67,7 @@ class FeedSyncTest {
         src.feed = Feed(sms = listOf(sms(200, "b"), sms(100, "a")))
         advanceTimeBy(3 * 60_000L + 1)
         runCurrent()
-        assertEquals(listOf<NewItem>(NewItem.Sms(sms(200, "b"))), got)
+        assertEquals(listOf<NewItem>(NewItem.Sms(sms(200, "b"), ArrivalVia.Poll)), got)
         assertEquals(SyncMode.Polling, s.state.value.mode)
 
         // 同样的数据再拉一次不重复发
@@ -116,7 +117,7 @@ class FeedSyncTest {
         s.start(backgroundScope)
         runCurrent()
         // 有缓存作为基线，离线期间到的新短信要通知
-        assertEquals(listOf<NewItem>(NewItem.Sms(sms(300, "new"))), got)
+        assertEquals(listOf<NewItem>(NewItem.Sms(sms(300, "new"), ArrivalVia.Poll)), got)
         assertEquals(2, cache.read()!!.sms.size)
         collector.cancel()
     }
