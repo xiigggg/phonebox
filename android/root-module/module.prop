@@ -1,0 +1,6 @@
+id=phonebox_root
+name=phonebox Root Guardian
+version=v@VERSION@
+versionCode=@VERSION_CODE@
+author=phonebox
+description=开机后拉起电话信箱（@PKG@）的 root 守护进程：被杀即拉起、被冻结即解冻。只在 App 里打开过 Root Guardian 时生效。

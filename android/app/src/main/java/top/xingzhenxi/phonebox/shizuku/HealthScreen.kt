@@ -54,7 +54,7 @@ import java.util.Locale
 
 private const val SHIZUKU_REQUEST = 6006
 
-/** 后台保活体检：Shizuku 一键修复 + ColorOS 手动开关清单 + Guardian 开关 */
+/** 后台保活体检：Root / Shizuku 一键修复 + ColorOS 手动开关清单 + Guardian 开关 */
 @Composable
 fun HealthScreen(onBack: () -> Unit) {
     BackHandler(onBack = onBack)
@@ -90,6 +90,9 @@ fun HealthScreen(onBack: () -> Unit) {
                 IconButton(onClick = onBack) { Icon(AppIcons.Back, contentDescription = "返回") }
                 Text("后台保活体检", style = MaterialTheme.typography.headlineMedium)
             }
+        }
+        item {
+            top.xingzhenxi.phonebox.root.RootSection(ctx, results, onFixed = { recheck() }) { t, c -> Section(t, c) }
         }
         item {
             Section("体检") {

@@ -200,6 +200,8 @@ private val DiagType.label: String
         DiagType.Guardian -> "Guardian"
         DiagType.Update -> "更新"
         DiagType.Contacts -> "通讯录"
+        DiagType.Root -> "Root"
+        DiagType.Push -> "推送"
     }
 
 private fun dur(ms: Long): String = when {

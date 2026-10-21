@@ -62,6 +62,6 @@ fun SettingsScreen(config: AppConfig, onEditSettings: () -> Unit, onOpenDiag: ()
         FilledTonalButton(onClick = { relogin = true }) { Text("重新登录 phonebox") }
         FilledTonalButton(onClick = onEditSettings) { Text("编辑连接设置（重新打开向导）") }
         FilledTonalButton(onClick = onOpenDiag) { Text("连接诊断") }
-        FilledTonalButton(onClick = onOpenHealth) { Text("后台保活体检（Shizuku）") }
+        FilledTonalButton(onClick = onOpenHealth) { Text("后台保活体检（Root / Shizuku）") }
     }
 }

@@ -31,8 +31,8 @@ android {
         minSdk = 31
         targetSdk = 36
         // 发布/测试应用内更新时用 -PpbVersionCode=N 出一个更高版本的包
-        versionCode = (project.findProperty("pbVersionCode") as String?)?.toInt() ?: 4
-        versionName = "0.2.2"
+        versionCode = (project.findProperty("pbVersionCode") as String?)?.toInt() ?: 5
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -73,6 +73,27 @@ android {
         // Shizuku UserService 的 Binder 接口
         aidl = true
     }
+}
+
+/**
+ * KernelSU / Magisk / APatch 开机模块（android/root-module）：打包时填入包名与版本，
+ * 产物在 app/build/outputs/root-module/，随 release 一起发布。
+ */
+val rootModuleZip by tasks.registering(Zip::class) {
+    val appId = android.defaultConfig.applicationId!!
+    val ver = android.defaultConfig.versionName!!
+    val code = android.defaultConfig.versionCode!!.toString()
+    from(rootProject.file("root-module")) {
+        exclude("README.md")
+        filesMatching(listOf("*.sh", "*.prop")) {
+            filter { line ->
+                line.replace("@PKG@", appId).replace("@MAIN@", "top.xingzhenxi.phonebox.root.RootGuardianMain")
+                    .replace("@VERSION@", ver).replace("@VERSION_CODE@", code)
+            }
+        }
+    }
+    archiveFileName.set("phonebox-root-$ver.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("outputs/root-module"))
 }
 
 dependencies {

@@ -9,7 +9,7 @@ import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
 /** 只有这些类型能进诊断日志；没有“任意文本”入口，从结构上挡住短信正文 */
-enum class DiagType { Registration, Network, Backoff, Service, Watchdog, FgsDenied, Alarm, Feed, Call, Shizuku, Guardian, Update, Contacts }
+enum class DiagType { Registration, Network, Backoff, Service, Watchdog, FgsDenied, Alarm, Feed, Call, Shizuku, Guardian, Update, Contacts, Root, Push }
 
 data class DiagEntry(val ts: Long, val type: DiagType, val reason: String)
 

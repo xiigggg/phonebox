@@ -77,6 +77,8 @@ class AppGraph(context: Context, val configRepository: ConfigRepository) {
         observeSmsNotifications()
         // Guardian 开关打开过的话，Shizuku binder 一到就重新绑定守护进程
         GuardianController.get(app).init()
+        // 开过 Root Guardian 的话，每次进程启动都确认它在；su 可能阻塞几秒，放 IO 线程
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) { top.xingzhenxi.phonebox.root.RootGuardianController.get(app).ensure() }
         UpdateWorker.schedule(app)
         contactsSync.init()
     }
