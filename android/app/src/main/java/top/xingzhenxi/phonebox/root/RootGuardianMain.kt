@@ -21,13 +21,15 @@ object RootGuardianMain {
     const val TARGET = "$PKG/.shizuku.GuardianTargetService"
     private const val TICK_MS = 5_000L
     private const val SERVICE_CHECK_EVERY = 12
+    @Volatile private var heldLock: java.nio.channels.FileLock? = null
 
     @JvmStatic
     fun main(args: Array<String>) {
         val dir = File(RootGuardianPaths.dir(PKG))
-        // 同一时刻只留一个：App 和开机模块都可能来拉
-        val lock = runCatching { RandomAccessFile(File(dir, RootGuardianPaths.LOCK), "rw").channel.tryLock() }.getOrNull()
-        if (lock == null) exitProcess(0)
+        // 同一时刻只留一个：App 和开机模块都可能来拉。锁必须一直被静态字段引用着：
+        // 只放在局部变量里会被 GC 回收、文件随之关闭，锁就释放了（真机上因此跑出过两个守护进程）
+        heldLock = runCatching { RandomAccessFile(File(dir, RootGuardianPaths.LOCK), "rw").channel.tryLock() }.getOrNull()
+        if (heldLock == null) exitProcess(0)
         val owner = runCatching { Files.getAttribute(dir.toPath(), "unix:uid") as Int }.getOrDefault(-1)
         val st = GuardianState(pid = android.os.Process.myPid())
         var tick = 0
