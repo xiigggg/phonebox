@@ -23,11 +23,15 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
       # linphone 依赖来自 download.linphone.org 的 maven 仓库，已在 settings.gradle.kts 声明
-      - run: ./gradlew assembleDebug testDebugUnitTest --stacktrace
+      - run: ./gradlew assembleDebug testDebugUnitTest :app:rootModuleZip --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: phonebox-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phonebox-root-module
+          path: android/app/build/outputs/root-module/*.zip
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

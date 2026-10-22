@@ -26,7 +26,7 @@
 - 加载 KernelSU 后，模块的 `service.sh` 会跑并拉起守护进程（`ksud soft-reboot` 同理）；
 - 或者打开一次 App，它会自己经 `su` 拉起。
 
-## 实测（Find N2，ColorOS 16 / Android 16，KernelSU LKM）
+## 实测（ColorOS 16 / Android 16 折叠屏，KernelSU LKM）
 
 - `am force-stop` 后 7 秒内被 Root Guardian 拉起（`kill -9` 的情况系统自己 2 秒就粘性重启了）；
 - 手动把 App 的 cgroup 冻结（写 `cgroup.freeze=1`）后 2 秒解冻；
