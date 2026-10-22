@@ -20,7 +20,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
+      # ubuntu-latest 已预装 Android SDK（ANDROID_HOME）；setup-android 装旧 tools 包会失败，不再用它
       - uses: gradle/actions/setup-gradle@v4
       # linphone 依赖来自 download.linphone.org 的 maven 仓库，已在 settings.gradle.kts 声明
       - run: ./gradlew assembleDebug testDebugUnitTest :app:rootModuleZip --stacktrace
