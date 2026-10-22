@@ -78,6 +78,27 @@ class FeedSyncTest {
         collector.cancel()
     }
 
+    @Test fun stalledDetectionAndLog() = runTest {
+        val logs = mutableListOf<String>()
+        val src = FakeSource().apply {
+            feed = Feed(sms = listOf(sms(100, "a")))
+            sse = { _, on -> on(StreamEvent.Opened) }
+        }
+        val s = FeedSync(src, null, clock = { testScheduler.currentTime }, random = Random(1), io = StandardTestDispatcher(testScheduler), log = { logs += it })
+        assertTrue(s.isStalled())   // 还没启动
+        s.start(backgroundScope)
+        runCurrent()
+        assertEquals(SyncMode.Streaming, s.state.value.mode)
+        assertTrue(!s.isStalled())
+        assertTrue(logs.contains("事件流已连接"))
+        src.emit(StreamEvent.Failed(null))
+        runCurrent()
+        assertTrue(!s.isStalled())   // 在退避重连，不算卡住
+        assertTrue(logs.any { it.startsWith("事件流断开") })
+        s.stop()
+        assertTrue(s.isStalled())
+    }
+
     @Test fun sseItemsAreDedupedAgainstPoll() = runTest {
         val src = FakeSource().apply {
             feed = Feed(sms = listOf(sms(100, "a")))

@@ -95,6 +95,7 @@ class KeepAliveService : Service(), KeepAliveControl {
         observeConfig()
         observeRegistration()
         observeFeed()
+        watchFeed()
         registerNetwork()
         scheduleHeartbeatAlarm()
         WatchdogWorker.schedule(this)
@@ -218,6 +219,24 @@ class KeepAliveService : Service(), KeepAliveControl {
             feed = next
             if (next == null) diag.log(DiagType.Feed, "phonebox 未登录或未配置，跳过事件流")
             else next.start(graph.scope)
+        }
+    }
+
+    /**
+     * 事件流看门狗：每 60 秒看一次，连续两次“既没连上、也没在退避重连”就重启它。
+     * 真机上出现过事件流停在“连接中”、没有任何请求在进行，重开 App 才恢复，根因未查清，先兜住。
+     */
+    private fun watchFeed() = scope.launch {
+        var stalled = 0
+        while (true) {
+            kotlinx.coroutines.delay(60_000)
+            val f = feed ?: continue
+            stalled = if (f.isStalled() && !f.state.value.sessionExpired) stalled + 1 else 0
+            if (stalled >= 2) {
+                diag.log(DiagType.Feed, "事件流停滞超过 1 分钟，重启")
+                stalled = 0
+                restartFeed()
+            }
         }
     }
 

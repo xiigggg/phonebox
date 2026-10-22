@@ -108,7 +108,7 @@ class AppGraph(context: Context, val configRepository: ConfigRepository) {
         _phonebox.value?.feedSync?.stop()
         _phonebox.value = if (cfg.baseUrl.isBlank()) null else runCatching {
             val client = PhoneboxClient(cfg.baseUrl, cfg.certFingerprint, ConfigTokenStore(configRepository))
-            PhoneboxGraph(client, FeedSync(client, feedCache))
+            PhoneboxGraph(client, FeedSync(client, feedCache, log = { diagLog.log(DiagType.Feed, it.take(120)) }))
         }.onFailure { diagLog.log(DiagType.Feed, "phonebox 地址无效：${it.javaClass.simpleName}") }.getOrNull()
     }
 

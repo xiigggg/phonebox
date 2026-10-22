@@ -58,6 +58,8 @@ class FeedSync(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val pollIntervalMs: Long = 3 * 60_000L,
     private val maxBackoffMs: Long = 5 * 60_000L,
+    /** 写诊断日志：事件流连上、断开、降级都记一笔，出问题时才知道卡在哪一步（不含任何短信内容） */
+    private val log: (String) -> Unit = {},
 ) {
     private val _state = MutableStateFlow(FeedSnapshot())
     val state: StateFlow<FeedSnapshot> = _state.asStateFlow()
@@ -128,18 +130,22 @@ class FeedSync(
             }
             when (val r = runStream()) {
                 StreamOutcome.Unsupported -> {
+                    log("服务器不支持事件流，改为每 3 分钟轮询")
                     sseSupported = false
                     resync = false
                     _state.value = _state.value.copy(sseUnsupported = true)
                 }
                 StreamOutcome.SessionExpired -> {
+                    log("事件流：登录已失效，停止同步")
                     _state.value = _state.value.copy(sessionExpired = true, mode = SyncMode.Idle, lastError = "登录已失效")
                     return
                 }
                 is StreamOutcome.Ended -> {
                     if (r.opened) attempt = 0
                     _state.value = _state.value.copy(mode = SyncMode.Polling)
-                    delay(backoffMs(attempt++))
+                    val wait = backoffMs(attempt++)
+                    log("事件流断开（${_state.value.lastError ?: "对端关闭"}），${wait / 1000} 秒后重连")
+                    delay(wait)
                     resync = true
                 }
             }
@@ -160,6 +166,9 @@ class FeedSync(
         data class Ended(val opened: Boolean) : StreamOutcome
     }
 
+    /** 卡住了：既没连上也没在退避（mode 停在 Idle），供看门狗判断 */
+    fun isStalled(): Boolean = job?.isActive != true || _state.value.mode == SyncMode.Idle
+
     private suspend fun runStream(): StreamOutcome {
         val events = Channel<StreamEvent>(Channel.UNLIMITED)
         val stream = source.openEvents(lastEventId) { events.trySend(it) }
@@ -169,6 +178,7 @@ class FeedSync(
                 when (ev) {
                     StreamEvent.Opened -> {
                         opened = true
+                        log("事件流已连接")
                         _state.value = _state.value.copy(mode = SyncMode.Streaming, lastError = null)
                     }
                     is StreamEvent.Sms -> { ev.id?.let { lastEventId = it }; applyOne(sms = ev.item) }
