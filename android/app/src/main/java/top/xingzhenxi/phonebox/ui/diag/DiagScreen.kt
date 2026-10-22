@@ -205,6 +205,7 @@ private val DiagType.label: String
     }
 
 private fun dur(ms: Long): String = when {
+    ms < 1_000 -> "< 1 秒"
     ms < 10_000 -> "%.1f 秒".format(ms / 1000.0)
     ms < 120_000 -> "${ms / 1000} 秒"
     ms < 7_200_000 -> "${ms / 60_000} 分钟"

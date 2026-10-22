@@ -92,13 +92,8 @@ fun HealthScreen(onBack: () -> Unit) {
             }
         }
         item {
-            top.xingzhenxi.phonebox.push.PushSection(ctx) { t, c -> Section(t, c) }
-        }
-        item {
-            top.xingzhenxi.phonebox.root.RootSection(ctx, results, onFixed = { recheck() }) { t, c -> Section(t, c) }
-        }
-        item {
-            Section("体检") {
+            val okCount = results.count { it.status == HealthStatus.Ok }
+            Section("体检 · ${okCount}/${results.size} 项正常") {
                 results.forEach { r -> StatusRow(r.item.title, r.status) }
                 when (shizuku) {
                     ShizukuState.Ready -> { FilledTonalButton(
@@ -131,6 +126,9 @@ fun HealthScreen(onBack: () -> Unit) {
                     TextButton(onClick = { DeepLinks.open(ctx, ColorOsSwitch.BannerLockscreen) }) { Text("去设置") }
                 }
             }
+        }
+        item {
+            top.xingzhenxi.phonebox.root.RootSection(ctx, results, onFixed = { recheck() }) { t, c -> Section(t, c) }
         }
         item {
             Section("ColorOS 手动开关") {
@@ -166,6 +164,9 @@ fun HealthScreen(onBack: () -> Unit) {
                 Field("最近拉起", if (gStatus.lastLaunchAt > 0) "${fmt(gStatus.lastLaunchAt)} · ${gStatus.lastReason}" else "无")
                 Muted("每 60 秒检查一次常驻服务，不在就以 shell 身份拉起。手机重启后 Shizuku 会停止，Guardian 也随之停止，需要重新激活 Shizuku 后才恢复。")
             }
+        }
+        item {
+            top.xingzhenxi.phonebox.push.PushSection(ctx) { t, c -> Section(t, c) }
         }
     } }
 }
@@ -241,10 +242,15 @@ private fun StatusRow(title: String, status: HealthStatus) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         Text(
-            status.label,
+            when (status) {
+                HealthStatus.Ok -> "✓ 正常"
+                HealthStatus.NeedsFix -> "! 需修复"
+                HealthStatus.Unknown -> "? 无法检测"
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = when (status) {
-                HealthStatus.Ok -> MaterialTheme.colorScheme.primary
+                // 主题色是橙色，和 error 红在深色下分不清；“正常”固定用绿色
+                HealthStatus.Ok -> androidx.compose.ui.graphics.Color(0xFF22A06B)
                 HealthStatus.NeedsFix -> MaterialTheme.colorScheme.error
                 HealthStatus.Unknown -> MaterialTheme.colorScheme.onSurfaceVariant
             },
