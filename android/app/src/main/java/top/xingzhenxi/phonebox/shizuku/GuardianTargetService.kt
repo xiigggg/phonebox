@@ -22,7 +22,7 @@ class GuardianTargetService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, "守护进程拉起", NotificationManager.IMPORTANCE_MIN))
         val n = Notification.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_phone_call)
+            .setSmallIcon(top.xingzhenxi.phonebox.R.drawable.ic_stat_phonebox)
             .setContentTitle("正在恢复常驻连接")
             .build()
         runCatching { startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) }

@@ -357,7 +357,7 @@ class KeepAliveService : Service(), KeepAliveControl {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         return Notification.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_phone_call)
+            .setSmallIcon(top.xingzhenxi.phonebox.R.drawable.ic_stat_phonebox)
             .setContentTitle("电话信箱")
             .setContentText(text)
             .setOngoing(true)

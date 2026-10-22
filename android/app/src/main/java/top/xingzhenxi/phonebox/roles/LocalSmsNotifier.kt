@@ -24,7 +24,7 @@ object LocalSmsNotifier {
     fun postSms(context: Context, from: String, body: String, ts: Long) {
         createChannel(context)
         val b = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.sym_action_email)
+            .setSmallIcon(top.xingzhenxi.phonebox.R.drawable.ic_stat_phonebox)
             .setContentTitle("本机卡 · $from")
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -35,7 +35,7 @@ object LocalSmsNotifier {
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(
-                NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(android.R.drawable.sym_action_email)
+                NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(top.xingzhenxi.phonebox.R.drawable.ic_stat_phonebox)
                     .setContentTitle("本机卡").setContentText("收到一条短信").build(),
             )
             .setContentIntent(openList(context))
@@ -45,7 +45,7 @@ object LocalSmsNotifier {
     fun postMms(context: Context) {
         createChannel(context)
         val n = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.sym_action_email)
+            .setSmallIcon(top.xingzhenxi.phonebox.R.drawable.ic_stat_phonebox)
             .setContentTitle("本机卡")
             .setContentText("收到彩信，暂不支持")
             .setSilent(true)
