@@ -7,7 +7,10 @@ interval=15
 context=quectel-incoming
 exten=s
 group=0
-rxgain=0
+; 模块经 USB 送来的语音偏响：EC20 实测语音段约 -9.5 dBFS、峰值接近满幅，手机上听着爆音。
+; 注意 chan_quectel 的负值是“除以倍数”而不是分贝：-3 = 除以 3 ≈ -9.5 dB，调完约 -19 dBFS。
+; 模块的 AT+CLVL / AT+QRXGAIN 只管模拟口，对 USB 音频无效，所以在这里衰减。
+rxgain=-3
 txgain=0
 autodeletesms=yes
 resetdongle=yes

@@ -1,5 +1,10 @@
 # 更新记录
 
+## 0.3.1（未发布）
+
+- 通话爆音：4G 模块经 USB 送来的语音电平过高（实测语音段约 -9.5 dBFS），服务端模板默认 rxgain=-3（约 -9.5 dB）。已有部署：改 quectel.conf 的 rxgain 后执行 quectel reload gracefully。
+- Root Guardian 只盯已知的 App 进程，不再每 5 秒扫描全部进程（真机上原先约占 1% CPU）。
+
 ## 0.3.0（2026-10）
 
 **修复**

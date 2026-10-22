@@ -22,6 +22,8 @@ object RootGuardianMain {
     private const val TICK_MS = 5_000L
     private const val SERVICE_CHECK_EVERY = 12
     @Volatile private var heldLock: java.nio.channels.FileLock? = null
+    /** 上次找到的 App pid：还活着就只看它一个，不必每 5 秒把 /proc 下上千个进程全扫一遍（真机上占约 1% CPU） */
+    private var knownPid = 0
 
     @JvmStatic
     fun main(args: Array<String>) {
@@ -36,7 +38,8 @@ object RootGuardianMain {
         var missing = 0
         while (File(dir, RootGuardianPaths.ENABLED).exists()) {
             st.lastCheckAt = System.currentTimeMillis()
-            val pids = pidsOf(PKG)
+            val pids = knownPid.takeIf { it > 0 && isPkg(it, PKG) }?.let(::listOf) ?: pidsOf(PKG)
+            knownPid = pids.firstOrNull() ?: 0
             if (pids.isEmpty()) {
                 missing++
                 if (missing >= 2) {
@@ -66,10 +69,12 @@ object RootGuardianMain {
 
     /** 主进程名正好等于包名的那些 pid（:shell、:guardian 这类子进程不算） */
     private fun pidsOf(pkg: String): List<Int> = File("/proc").listFiles().orEmpty().mapNotNull { f ->
-        val pid = f.name.toIntOrNull() ?: return@mapNotNull null
-        val cmd = runCatching { File(f, "cmdline").readBytes() }.getOrNull() ?: return@mapNotNull null
-        pid.takeIf { String(cmd).substringBefore('\u0000') == pkg }
+        f.name.toIntOrNull()?.takeIf { isPkg(it, pkg) }
     }
+
+    /** pid 还在且仍是本应用主进程（pid 可能被系统回收给别的进程） */
+    private fun isPkg(pid: Int, pkg: String): Boolean =
+        runCatching { File("/proc/$pid/cmdline").readBytes() }.getOrNull()?.let { String(it).substringBefore('\u0000') == pkg } == true
 
     /** 解冻并返回是否真的冻着：cgroup v2 freezer（AOSP）与 SIGSTOP（部分厂商的冻结实现）两条都看 */
     private fun unfreeze(pid: Int): Boolean {
